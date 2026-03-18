@@ -1,356 +1,298 @@
 import React, { useState, useEffect, useRef } from 'react';
-// App.css intentionally left empty - using Tailwind via CDN
-import { Terminal, Cpu, Globe, Database, Github, Mail, ArrowUpRight, Bot, ShieldCheck, Send, Loader2, Activity, BookOpen, Layers, Box, BarChart, Calendar, TerminalSquare } from 'lucide-react';
+import { Network, Database, Bot, TrendingUp, ArrowRight, ShieldCheck, Activity, Layers, MessageSquare, X, Send, Loader2, Link, CheckCircle2, Phone, Twitter, MessageCircle, Users, Zap, Mail } from 'lucide-react';
 
 export default function App() {
-  const [terminalText, setTerminalText] = useState('');
-  const [showCursor, setShowCursor] = useState(true);
-  const [isInteracting, setIsInteracting] = useState(false);
-  const [chatHistory, setChatHistory] = useState([]);
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatHistory, setChatHistory] = useState([
+    { role: 'agent', text: '您好，我是运行在 ipaw.ai 上的数字分身 FlyAgent。袁总（Yuan Zhaoyang）赋予了我他的核心架构经验、行业知识与百万级社群运营方法论。请问有什么可以帮您？' }
+  ]);
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const chatEndRef = useRef(null);
-  const inputRef = useRef(null);
-
-  const fullText = `> ssh visitor@ipaw.ai\n> Authenticating... Success.\n> Booting ipaw.ai core engine...\n> [INFO] Kernel: Rust/WebAssembly\n> [INFO] Agent Matrix: Online\n> \n> Hello, World. I am Yuan Zhaoyang.\n> Welcome to my Intelligent Personal Agent Workspace.`;
 
   useEffect(() => {
-    let i = 0;
-    const typingEffect = setInterval(() => {
-      if (i < fullText.length) {
-        setTerminalText(fullText.substring(0, i + 1));
-        i++;
-      } else {
-        clearInterval(typingEffect);
-        setTimeout(() => setIsInteracting(true), 1200);
-      }
-    }, 30);
-    const cursorEffect = setInterval(() => setShowCursor(prev => !prev), 500);
-    return () => { clearInterval(typingEffect); clearInterval(cursorEffect); };
+    const handleScroll = () => setIsScrolled(window.scrollY > 50);
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
   useEffect(() => {
-    if (isInteracting && chatEndRef.current) {
+    if (isChatOpen && chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [chatHistory, isInteracting, isLoading]);
-
-  const generateContent = async (userMessage, history) => {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    const url = `${import.meta.env.VITE_GEMINI_API_URL}?key=${apiKey}`;
-    const systemPrompt = "你是袁照洋的数字孪生智能体 (Agent Zhaoyang)。你运行在 ipaw.ai 平台上，底层由 Rust 和 WebAssembly 驱动。你精通多智能体协同 (Agentic Workflow, LangGraph, AutoGen)、知识引擎 (RAG, Qdrant) 以及全栈工程化。请以极客、专业且友好的口吻回答访客的问题。尽量保持回复简短精炼，符合极客终端命令行的交流风格。";
-    let fullPrompt = history.map(msg => `${msg.role === 'user' ? 'Visitor' : 'Zhaoyang'}: ${msg.text}`).join('\n');
-    fullPrompt += `\nVisitor: ${userMessage}\nZhaoyang:`;
-    const payload = {
-      contents: [{ parts: [{ text: fullPrompt }] }],
-      systemInstruction: { parts: [{ text: systemPrompt }] }
-    };
-    const delays = [1000, 2000, 4000, 8000, 16000];
-    for (let i = 0; i < 6; i++) {
-      try {
-        const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        if (!response.ok) throw new Error(`API Error: ${response.status}`);
-        const data = await response.json();
-        return data.candidates?.[0]?.content?.parts?.[0]?.text || "[系统提示：未生成有效回复]";
-      } catch (error) {
-        if (i === 5) return "[系统错误：与 ipaw.ai 核心底层引擎的连接超时，请稍后重试。]";
-        await new Promise(resolve => setTimeout(resolve, delays[i]));
-      }
-    }
-  };
+  }, [chatHistory, isChatOpen, isLoading]);
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputText.trim() || isLoading) return;
-    const currentInput = inputText.trim();
+    const userText = inputText.trim();
     setInputText('');
-    setChatHistory(prev => [...prev, { role: 'user', text: currentInput }]);
+    const newHistory = [...chatHistory, { role: 'user', text: userText }];
+    setChatHistory(newHistory);
     setIsLoading(true);
-    const agentResponse = await generateContent(currentInput, chatHistory);
-    setChatHistory(prev => [...prev, { role: 'agent', text: agentResponse }]);
+
+    try {
+      const messages = [
+        {
+          role: 'system',
+          content: '你是袁照洋的数字分身 FlyAgent，运行在 ipaw.ai 平台。你精通 AI 智能体架构、MHCopilot 算力网关、DataDream 数据标注、百万级社群运营与企业 AI 落地。请以专业、简洁、极客风格回答访客问题。'
+        },
+        ...newHistory.map(m => ({
+          role: m.role === 'user' ? 'user' : 'assistant',
+          content: m.text
+        }))
+      ];
+
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_API_KEY}`
+        },
+        body: JSON.stringify({
+          model: import.meta.env.VITE_API_MODEL || 'gpt-4o',
+          messages,
+          max_tokens: 500
+        })
+      });
+
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || '[系统错误：未获取到回复]';
+      setChatHistory(prev => [...prev, { role: 'agent', text: reply }]);
+    } catch {
+      setChatHistory(prev => [...prev, { role: 'agent', text: '[系统错误：连接 MHCopilot 网关失败，请稍后重试。]' }]);
+    }
     setIsLoading(false);
   };
 
-  const handleFocusChat = () => {
-    if (isInteracting && inputRef.current) inputRef.current.focus();
-  };
-
   return (
-    <div className="min-h-screen bg-[#0a0f1a] text-slate-300 font-sans selection:bg-emerald-900 selection:text-emerald-100">
+    <div className="min-h-screen bg-[#09090b] text-zinc-300 font-sans selection:bg-indigo-500/30 selection:text-indigo-200">
       {/* Navbar */}
-      <nav className="fixed top-0 w-full z-50 bg-[#0a0f1a]/80 backdrop-blur-md border-b border-white/5">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+      <nav className={`fixed top-0 w-full z-40 transition-all duration-300 ${isScrolled ? 'bg-[#09090b]/80 backdrop-blur-lg border-b border-white/5 py-4' : 'bg-transparent py-6'}`}>
+        <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
           <div className="flex items-center space-x-2">
-            <Globe className="w-6 h-6 text-emerald-400" />
-            <span className="text-xl font-bold tracking-widest text-white">ipaw<span className="text-emerald-400">.ai</span></span>
+            <Layers className="w-6 h-6 text-indigo-500" />
+            <span className="text-xl font-bold tracking-tight text-white">ipaw<span className="text-indigo-500">.ai</span></span>
           </div>
-          <div className="hidden md:flex space-x-8 text-sm font-mono text-slate-400">
-            <a href="#about" className="hover:text-emerald-400 transition-colors">~/about</a>
-            <a href="#agents" className="hover:text-emerald-400 transition-colors">~/agents</a>
-            <a href="#logs" className="hover:text-emerald-400 transition-colors">~/logs</a>
+          <div className="hidden md:flex space-x-8 text-sm font-medium text-zinc-400">
+            <a href="#architect" className="hover:text-white transition-colors">架构全景</a>
+            <a href="#datadream" className="hover:text-white transition-colors">DataDream</a>
+            <a href="#flyagent" className="hover:text-white transition-colors">FlyAgent</a>
+            <a href="#training" className="hover:text-white transition-colors">企业内训</a>
           </div>
-          <button className="px-4 py-2 text-xs font-mono border border-emerald-500/30 text-emerald-400 rounded hover:bg-emerald-950/50 transition-all flex items-center space-x-2">
-            <Terminal className="w-4 h-4" /><span>Connect_WS()</span>
+          <button onClick={() => setIsChatOpen(true)} className="px-5 py-2.5 text-sm font-medium bg-white text-black rounded-full hover:bg-zinc-200 transition-all flex items-center space-x-2">
+            <MessageSquare className="w-4 h-4" /><span>唤醒 FlyAgent</span>
           </button>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="pt-32 pb-20 px-6 max-w-6xl mx-auto flex flex-col lg:flex-row items-center justify-between min-h-[90vh]">
-        <div className="lg:w-1/2 space-y-8 z-10">
-          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded bg-emerald-950/20 border border-emerald-900/50 text-emerald-400 text-xs font-mono">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span>RUST_WASM_ENGINE_ACTIVE</span>
+      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600/20 rounded-full blur-[120px] -z-10"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-emerald-600/10 rounded-full blur-[120px] -z-10"></div>
+        <div className="max-w-7xl mx-auto px-6 text-center z-10 relative">
+          <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-sm font-medium mb-8">
+            <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+            <span>MHCopilot Gateway v2.0 Online</span>
           </div>
-          <h1 className="text-5xl lg:text-7xl font-extrabold tracking-tight text-white leading-tight">
-            架构下一代 <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-500">自主智能体</span>
+          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-white leading-tight mb-8">
+            构建大模型算力网关 <br className="hidden md:block" />
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-emerald-400">重塑数字商业生态</span>
           </h1>
-          <p className="text-lg text-slate-400 max-w-lg leading-relaxed">
-            您好，我是 <strong className="text-slate-200">袁照洋</strong>。<br />
-            这里是 <strong>ipaw.ai</strong>，我的数字孪生空间与硬核技术试验场。致力于通过 Rust 与大模型技术，构建具备极致性能与认知能力的 Agent 矩阵。
+          <p className="text-lg md:text-xl text-zinc-400 max-w-3xl mx-auto leading-relaxed mb-10">
+            您好，我是 <strong className="text-white">袁照洋</strong>。<br />
+            AI 智能体架构师 / AI 商业化落地推手。依托深厚的行业积淀与前瞻视野，致力于打通从高质量数据标注、底层算力聚合、海量社群运营到企业级应用落地的全链路 AI 商业闭环。
           </p>
-          <div className="flex space-x-4 pt-4 font-mono text-sm">
-            <button onClick={handleFocusChat} className={`px-6 py-3 font-bold rounded transition-colors flex items-center space-x-2 ${isInteracting ? 'bg-emerald-500 hover:bg-emerald-400 text-[#0a0f1a]' : 'bg-slate-800 text-slate-500 cursor-not-allowed'}`}>
-              <Bot className="w-5 h-5" />
-              <span>{isInteracting ? '> ./chat_with_zhaoyang' : '> System Booting...'}</span>
-            </button>
-            <button className="px-6 py-3 border border-slate-700 hover:border-emerald-500/50 hover:text-emerald-400 rounded transition-colors flex items-center space-x-2 group">
-              <span>View Source</span><Github className="w-4 h-4 group-hover:text-emerald-400 transition-colors" />
-            </button>
-          </div>
-        </div>
-
-        {/* Terminal Window */}
-        <div className="lg:w-5/12 w-full mt-16 lg:mt-0 relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-cyan-600 rounded-xl blur opacity-20 transition duration-1000"></div>
-          <div className="relative bg-[#0d1322] rounded-xl border border-slate-800 shadow-2xl overflow-hidden flex flex-col h-[420px]">
-            <div className="flex items-center px-4 py-2 bg-[#151e32] border-b border-slate-800 shrink-0">
-              <div className="flex space-x-2">
-                <div className="w-3 h-3 rounded-full bg-red-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-yellow-500/80"></div>
-                <div className="w-3 h-3 rounded-full bg-green-500/80"></div>
-              </div>
-              <div className="mx-auto text-xs text-slate-500 font-mono flex items-center">
-                <Globe className="w-3 h-3 mr-2 text-emerald-500" />
-                {isInteracting ? 'zhaoyang_agent@ipaw.ai:~' : 'visitor@ipaw.ai:~'}
-              </div>
-            </div>
-            <div className="flex-1 p-5 font-mono text-sm bg-[#080c16] shadow-inner flex flex-col overflow-hidden">
-              {!isInteracting ? (
-                <div className="text-emerald-400 whitespace-pre-wrap leading-relaxed h-full">
-                  {terminalText}<span className={`${showCursor ? 'opacity-100' : 'opacity-0'} font-bold`}>_</span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex-1 overflow-y-auto space-y-5 pr-2 custom-scrollbar pb-4">
-                    <div className="text-emerald-500/50 text-xs mb-4 text-center border-b border-emerald-900/30 pb-2">-- Secure Neural Link Established. Agent Online. --</div>
-                    {chatHistory.length === 0 && (
-                      <div className="text-emerald-600/60 text-xs text-center mt-10">您可以向数字分身询问关于 ipaw.ai 架构、Rust 或多智能体系统的问题。</div>
-                    )}
-                    {chatHistory.map((msg, idx) => (
-                      <div key={idx} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                        <div className="flex items-center space-x-2 text-[10px] text-slate-500 mb-1 uppercase tracking-wider">
-                          {msg.role === 'user' ? (<><span>Guest</span><Cpu className="w-3 h-3 text-emerald-700" /></>) : (<><Bot className="w-3 h-3 text-emerald-400" /><span>Agent</span></>)}
-                        </div>
-                        <div className={`p-3 rounded-lg max-w-[90%] whitespace-pre-wrap leading-relaxed ${msg.role === 'user' ? 'bg-emerald-950/40 text-emerald-100 border border-emerald-900/50 rounded-tr-sm' : 'bg-[#121927] text-emerald-300 border border-slate-800/80 rounded-tl-sm'}`}>
-                          {msg.text}
-                        </div>
-                      </div>
-                    ))}
-                    {isLoading && (
-                      <div className="flex items-start flex-col">
-                        <div className="flex items-center space-x-2 text-[10px] text-slate-500 mb-1 uppercase tracking-wider">
-                          <Bot className="w-3 h-3 text-emerald-400" /><span>Agent</span>
-                        </div>
-                        <div className="p-3 bg-[#121927] border border-slate-800/80 rounded-lg rounded-tl-sm flex items-center space-x-2 text-emerald-500/70">
-                          <Loader2 className="w-4 h-4 animate-spin" /><span className="text-xs">Processing via LLM Core...</span>
-                        </div>
-                      </div>
-                    )}
-                    <div ref={chatEndRef} className="h-1" />
-                  </div>
-                  <form onSubmit={handleSendMessage} className="mt-2 shrink-0 relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-500 font-bold">&gt;</span>
-                    <input ref={inputRef} type="text" value={inputText} onChange={(e) => setInputText(e.target.value)}
-                      placeholder="发送指令或开始对话..." disabled={isLoading}
-                      className="w-full bg-[#0a0f1a] border border-emerald-900/60 rounded-md pl-8 pr-12 py-3 text-emerald-100 text-sm focus:outline-none focus:border-emerald-500/60 focus:ring-1 focus:ring-emerald-500/50 transition-all disabled:opacity-50" />
-                    <button type="submit" disabled={isLoading || !inputText.trim()} className="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-emerald-500 hover:text-emerald-300 disabled:opacity-30 transition-colors">
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </form>
-                </>
-              )}
-            </div>
+          <div className="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-6">
+            <a href="#architect" className="px-8 py-4 bg-white text-black font-semibold rounded-full hover:bg-zinc-200 transition-all flex items-center group">
+              查阅架构白皮书 <ArrowRight className="w-4 h-4 ml-2 group-hover:translate-x-1 transition-transform" />
+            </a>
+            <a href="https://mhcopilot.com" target="_blank" rel="noreferrer" className="px-8 py-4 bg-zinc-900 border border-zinc-800 text-white font-semibold rounded-full hover:border-zinc-700 transition-all flex items-center">
+              访问 MHCopilot 算力中心 <Link className="w-4 h-4 ml-2 text-zinc-500" />
+            </a>
           </div>
         </div>
       </section>
 
-      {/* Skills */}
-      <section id="about" className="py-24 bg-[#0d1322] border-y border-white/5">
-        <div className="max-w-6xl mx-auto px-6">
+      {/* Core Architecture */}
+      <section id="architect" className="py-24 bg-[#09090b] relative">
+        <div className="max-w-7xl mx-auto px-6">
           <div className="mb-16">
-            <h2 className="text-3xl font-bold text-white mb-2 flex items-center"><Cpu className="w-8 h-8 mr-3 text-emerald-400" />硬核技术栈 (Core Stack)</h2>
-            <p className="text-slate-500 font-mono text-sm">ipaw.ai 基础设施参数</p>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="bg-[#0a0f1a] border border-slate-800 p-8 rounded-xl hover:border-emerald-500/30 transition-colors group">
-              <ShieldCheck className="w-8 h-8 text-orange-500 mb-6 group-hover:scale-110 transition-transform" />
-              <h3 className="text-xl font-bold text-slate-200 mb-3">Rust & Wasm</h3>
-              <p className="text-slate-400 text-sm leading-relaxed mb-4">追求极致的内存安全与零成本抽象。使用 Rust 编写高性能 Agent 网关，并编译为 WebAssembly 驱动前端极速交互。</p>
-              <div className="flex flex-wrap gap-2 text-xs font-mono text-orange-400/80">
-                <span className="px-2 py-1 bg-orange-950/30 rounded border border-orange-900/50">Axum</span>
-                <span className="px-2 py-1 bg-orange-950/30 rounded border border-orange-900/50">Dioxus</span>
-                <span className="px-2 py-1 bg-orange-950/30 rounded border border-orange-900/50">Tokio</span>
-              </div>
-            </div>
-            <div className="bg-[#0a0f1a] border border-slate-800 p-8 rounded-xl hover:border-cyan-500/30 transition-colors group">
-              <Bot className="w-8 h-8 text-cyan-500 mb-6 group-hover:scale-110 transition-transform" />
-              <h3 className="text-xl font-bold text-slate-200 mb-3">多智能体架构</h3>
-              <p className="text-slate-400 text-sm leading-relaxed mb-4">深度研究 Agentic Workflow，擅长利用大模型推理能力构建具备反思、规划与工具调用能力的多角色系统。</p>
-              <div className="flex flex-wrap gap-2 text-xs font-mono text-cyan-400/80">
-                <span className="px-2 py-1 bg-cyan-950/30 rounded border border-cyan-900/50">LangGraph</span>
-                <span className="px-2 py-1 bg-cyan-950/30 rounded border border-cyan-900/50">AutoGen</span>
-              </div>
-            </div>
-            <div className="bg-[#0a0f1a] border border-slate-800 p-8 rounded-xl hover:border-purple-500/30 transition-colors group">
-              <Database className="w-8 h-8 text-purple-500 mb-6 group-hover:scale-110 transition-transform" />
-              <h3 className="text-xl font-bold text-slate-200 mb-3">知识引擎与 RAG</h3>
-              <p className="text-slate-400 text-sm leading-relaxed mb-4">设计高并发、低延迟的向量检索增强生成系统，将海量非结构化数据转化为数字生命的核心记忆库。</p>
-              <div className="flex flex-wrap gap-2 text-xs font-mono text-purple-400/80">
-                <span className="px-2 py-1 bg-purple-950/30 rounded border border-purple-900/50">Qdrant</span>
-                <span className="px-2 py-1 bg-purple-950/30 rounded border border-purple-900/50">Vector Search</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Agent Lab */}
-      <section id="agents" className="py-24 bg-[#0a0f1a]">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-16 gap-4">
-            <div>
-              <h2 className="text-3xl font-bold text-white mb-2 flex items-center"><Layers className="w-8 h-8 mr-3 text-cyan-400" />Agent 实验室 (Lab)</h2>
-              <p className="text-slate-500 font-mono text-sm">Deployment.Instances.List()</p>
-            </div>
-            <button className="text-sm font-mono text-cyan-400 hover:text-cyan-300 flex items-center border border-cyan-900/50 bg-cyan-950/20 px-4 py-2 rounded transition-colors">查看 GitHub 仓库 <ArrowUpRight className="w-4 h-4 ml-1" /></button>
-          </div>
-          <div className="space-y-8">
-            <div className="group relative bg-[#0d1322] border border-slate-800 hover:border-cyan-500/50 rounded-2xl p-6 md:p-8 transition-all overflow-hidden flex flex-col md:flex-row items-center gap-8">
-              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-cyan-400 to-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="md:w-1/3 w-full bg-[#0a0f1a] rounded-xl aspect-video border border-slate-800 flex items-center justify-center overflow-hidden relative shadow-inner">
-                <div className="absolute inset-0 bg-cyan-500/5 group-hover:bg-cyan-500/10 transition-colors z-10"></div>
-                <div className="w-20 h-20 rounded-full border-2 border-dashed border-cyan-500/50 animate-[spin_10s_linear_infinite] flex items-center justify-center">
-                  <div className="w-12 h-12 rounded-full border border-blue-400/50 animate-[spin_5s_linear_infinite_reverse]"></div>
-                  <BarChart className="w-5 h-5 absolute text-cyan-400" />
-                </div>
-              </div>
-              <div className="md:w-2/3 w-full flex flex-col h-full justify-between">
-                <div>
-                  <div className="flex items-center space-x-3 mb-3">
-                    <span className="px-2 py-1 bg-cyan-950/50 text-cyan-400 text-xs font-mono rounded border border-cyan-800/50 flex items-center"><Activity className="w-3 h-3 mr-1" /> Online</span>
-                    <span className="text-slate-500 text-xs font-mono">v2.1.0 • Rust Backend</span>
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-cyan-400 transition-colors">Omni-Data Analyst</h3>
-                  <p className="text-slate-400 mb-6 text-sm leading-relaxed">一个完全自主的数据分析智能体系统。用户只需上传 CSV/Excel 文件或连接 SQL 数据库，Agent 矩阵将自动进行数据清洗、多维分析，并生成交互式可视化报告与深度业务洞察。基于 LangGraph 实现复杂状态流转。</p>
-                </div>
-                <div className="mt-auto flex items-center space-x-6">
-                  <a href="#" className="text-sm font-medium text-white hover:text-cyan-400 flex items-center group/link">Launch Instance <ArrowUpRight className="w-4 h-4 ml-1 transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5 transition-transform" /></a>
-                  <a href="#" className="text-sm text-slate-500 hover:text-white flex items-center transition-colors"><Github className="w-4 h-4 mr-1" /> Source</a>
-                </div>
-              </div>
-            </div>
-            <div className="group relative bg-[#0d1322] border border-slate-800 hover:border-purple-500/50 rounded-2xl p-6 md:p-8 transition-all overflow-hidden flex flex-col md:flex-row items-center gap-8">
-              <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-purple-400 to-pink-600 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-              <div className="md:w-1/3 w-full bg-[#0a0f1a] rounded-xl aspect-video border border-slate-800 flex items-center justify-center overflow-hidden relative shadow-inner">
-                <div className="absolute inset-0 bg-purple-500/5 group-hover:bg-purple-500/10 transition-colors z-10"></div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[...Array(9)].map((_, i) => (<div key={i} className="w-4 h-4 bg-purple-500/30 rounded-sm" style={{ animation: `pulse ${2 + i * 0.2}s infinite` }}></div>))}
-                </div>
-              </div>
-              <div className="md:w-2/3 w-full flex flex-col h-full justify-between">
-                <div>
-                  <div className="flex items-center space-x-3 mb-3">
-                    <span className="px-2 py-1 bg-purple-950/50 text-purple-400 text-xs font-mono rounded border border-purple-800/50 flex items-center"><Box className="w-3 h-3 mr-1" /> AutoGen</span>
-                    <span className="text-slate-500 text-xs font-mono">Experimental • Wasm UI</span>
-                  </div>
-                  <h3 className="text-2xl font-bold text-white mb-3 group-hover:text-purple-400 transition-colors">AutoCode Weaver</h3>
-                  <p className="text-slate-400 mb-6 text-sm leading-relaxed">基于多角色协同（产品经理、架构师、程序员、测试员 Agent）的自动化软件工程框架。支持通过自然语言对话，自动拆解需求并生成包含前后端代码、Docker 配置及测试用例的完整项目结构。</p>
-                </div>
-                <div className="mt-auto flex items-center space-x-6">
-                  <a href="#" className="text-sm font-medium text-white hover:text-purple-400 flex items-center group/link">Read Architecture Docs <ArrowUpRight className="w-4 h-4 ml-1 transform group-hover/link:translate-x-0.5 group-hover/link:-translate-y-0.5 transition-transform" /></a>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* System Logs */}
-      <section id="logs" className="py-24 bg-[#0d1322] border-y border-white/5 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
-        <div className="max-w-6xl mx-auto px-6 relative z-10">
-          <div className="mb-16">
-            <h2 className="text-3xl font-bold text-white mb-2 flex items-center"><TerminalSquare className="w-8 h-8 mr-3 text-emerald-400" />系统日志 (System Logs)</h2>
-            <p className="text-slate-500 font-mono text-sm">Cognitive.Updates.Read() - 认知迭代与技术沉淀</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">核心架构矩阵 (Core Matrix)</h2>
+            <p className="text-zinc-400 text-lg">四大护城河：数据基石、算力中枢、商业应用与企业赋能。</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {[
-              { date: '2026-03-12', read: '15 min read', color: 'emerald', title: 'Rust 异步在 LLM 流式输出中的性能优化实践', desc: '深度解析如何使用 Tokio 和 Axum 构建极低延迟的 SSE 与 WebSocket 网关，解决大模型生成过程中的高并发连接保持问题。' },
-              { date: '2026-02-28', read: '22 min read', color: 'cyan', title: '多智能体协同 (Multi-Agent) 中的记忆管理与反思机制', desc: '探讨长期记忆与短期工作记忆的向量化存储方案，以及如何设计让 Agent 能够"自我纠错"的 Reflection Prompt 架构。' },
-              { date: '2026-01-15', read: '18 min read', color: 'purple', title: '从 LangChain 到自研 Agent 网关：极客架构演进之路', desc: '为什么在生产环境中放弃了臃肿的 Python 框架？本文复盘了我如何用 Rust 从零开始手搓高定制化的轻量级 Agent 编排引擎。' },
-            ].map((article, i) => (
-              <article key={i} className={`bg-[#0a0f1a] border border-slate-800 rounded-xl p-6 hover:border-${article.color}-500/30 transition-colors group cursor-pointer flex flex-col h-full`}>
-                <div className={`flex items-center space-x-2 text-xs font-mono text-${article.color}-500/70 mb-4`}>
-                  <Calendar className="w-3 h-3" /><span>{article.date}</span><span>•</span><span>{article.read}</span>
-                </div>
-                <h3 className={`text-lg font-bold text-slate-200 mb-3 group-hover:text-${article.color}-400 transition-colors line-clamp-2`}>{article.title}</h3>
-                <p className="text-sm text-slate-400 mb-6 line-clamp-3 leading-relaxed flex-grow">{article.desc}</p>
-                <div className={`flex items-center text-${article.color}-500 text-sm font-medium mt-auto`}>
-                  <BookOpen className="w-4 h-4 mr-2" /> Read Log
-                </div>
-              </article>
-            ))}
+            {/* DataDream */}
+            <div id="datadream" className="lg:col-span-2 bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800/50 p-8 rounded-3xl hover:border-indigo-500/30 transition-all group">
+              <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center mb-6 border border-indigo-500/20 text-indigo-400"><Database className="w-7 h-7" /></div>
+              <h3 className="text-2xl font-bold text-white mb-3 flex items-center">DataDream <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-indigo-500/20 text-indigo-300 rounded-full border border-indigo-500/30">数据底座</span></h3>
+              <p className="text-zinc-400 leading-relaxed mb-6">专业领域病例标注与高质量数据处理矩阵。由省级妇幼保健院临床一线专家、医学博士及硕士领衔，组建超百人专业医药团队。</p>
+              <div className="bg-black/30 rounded-xl p-4 border border-zinc-800/50">
+                <p className="text-sm text-zinc-300"><strong className="text-indigo-400">实战战绩：</strong>主导国内头部医疗 AI 模型的海量病例标注工作，提供严苛的学术支撑与专业把关，为大模型微调奠定极高的数据壁垒。</p>
+              </div>
+            </div>
+            {/* MHCopilot */}
+            <a href="https://mhcopilot.com" target="_blank" rel="noreferrer" className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800/50 p-8 rounded-3xl hover:border-cyan-500/50 hover:shadow-[0_0_30px_rgba(34,211,238,0.1)] transition-all group flex flex-col">
+              <div className="w-14 h-14 bg-cyan-500/10 rounded-2xl flex items-center justify-center mb-6 border border-cyan-500/20 text-cyan-400 group-hover:scale-110 transition-transform"><Network className="w-7 h-7" /></div>
+              <h3 className="text-2xl font-bold text-white mb-3 flex items-center justify-between">MHCopilot <ArrowRight className="w-5 h-5 text-cyan-500 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all" /></h3>
+              <p className="text-zinc-400 leading-relaxed mb-4 flex-grow">跨生态 LLM API 统一路由网关。打破大模型生态壁垒，将国内外顶尖大语言模型能力进行聚合与高并发调度。</p>
+              <div className="inline-flex items-center text-cyan-400 text-sm font-medium mt-auto"><Link className="w-4 h-4 mr-2" /> 访问算力中枢</div>
+            </a>
+            {/* FlyAgent */}
+            <div id="flyagent" className="bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800/50 p-8 rounded-3xl hover:border-emerald-500/30 transition-all group">
+              <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-6 border border-emerald-500/20 text-emerald-400"><Bot className="w-7 h-7" /></div>
+              <h3 className="text-2xl font-bold text-white mb-3">FlyAgent</h3>
+              <p className="text-zinc-400 leading-relaxed mb-6">高度定制化的垂直领域 AI 数字分身。依托 DataDream 专有数据喂养与 MHCopilot 底层算力调度，精准还原复杂业务决策链。</p>
+              <div className="flex items-center text-emerald-400 font-bold bg-emerald-500/10 px-3 py-2 rounded-lg w-fit border border-emerald-500/20"><CheckCircle2 className="w-5 h-5 mr-1" /> 核心业务全流程自动化</div>
+            </div>
+            {/* Enterprise Training */}
+            <div id="training" className="lg:col-span-2 bg-gradient-to-br from-zinc-900 to-zinc-950 border border-zinc-800/50 p-8 rounded-3xl hover:border-orange-500/30 transition-all group flex flex-col justify-between">
+              <div>
+                <div className="w-14 h-14 bg-orange-500/10 rounded-2xl flex items-center justify-center mb-6 border border-orange-500/20 text-orange-400"><TrendingUp className="w-7 h-7" /></div>
+                <h3 className="text-2xl font-bold text-white mb-3 flex items-center">AI 商业增长引擎 <span className="ml-3 px-2 py-0.5 text-xs font-medium bg-orange-500/20 text-orange-300 rounded-full border border-orange-500/30">企业赋能</span></h3>
+                <p className="text-zinc-400 leading-relaxed mb-6 max-w-2xl">不谈空泛理论，只做真实交付。提供"培训 + 咨询 + 交付"三位一体的 AI 落地服务。涵盖 AI 通识、LLM 深度应用、Agent 架构设计与研发团队提效实战营。</p>
+              </div>
+              <div className="grid grid-cols-3 gap-4 border-t border-zinc-800/50 pt-6 mt-4">
+                {[['&gt;300%', '平均年化 ROI'], ['50-80%', '综合工作效率提升'], ['40%', '智能体降低人力成本']].map(([val, label], i) => (
+                  <div key={i}>
+                    <div className="text-2xl md:text-3xl font-extrabold text-white mb-1" dangerouslySetInnerHTML={{ __html: val }} />
+                    <div className="text-xs text-zinc-500 font-medium">{label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="py-16 bg-[#0a0f1a] border-b border-white/5">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center divide-x divide-slate-800/50">
-            {[
-              { val: '99.9%', label: 'Gateway Uptime', color: 'emerald' },
-              { val: '12+', label: 'Active Agent Clusters', color: 'cyan' },
-              { val: '1.5M', label: 'Vector Embeddings', color: 'purple' },
-              { val: '~45ms', label: 'Avg Rust API Latency', color: 'orange' },
-            ].map((s, i) => (
-              <div key={i} className="flex flex-col items-center justify-center p-4">
-                <span className="text-3xl font-bold text-white mb-1 tracking-tight">{s.val}</span>
-                <span className={`text-xs font-mono text-${s.color}-500 uppercase tracking-wider`}>{s.label}</span>
-              </div>
-            ))}
+      {/* Ecosystem & Community */}
+      <section className="py-24 border-t border-white/5 bg-[#0c0c0e]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col lg:flex-row items-start justify-between gap-16">
+            <div className="lg:w-5/12">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-mono mb-6">B2B ECOSYSTEM</div>
+              <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">深耕行业，<br />链接全域商业网络</h2>
+              <p className="text-lg text-zinc-400 leading-relaxed mb-8">依托长期在核心业务架构层面的深耕，与各界政企单位、核心科研机构建立了极其稳固的业务合作协议与高互信壁垒。</p>
+              <ul className="space-y-4">
+                {['主导垂直领域平台级应用落地', '打通企业级复杂业务闭环', '生态合作伙伴系统与支付结算整合', '从 0 到 1 建设企业数字化底座'].map((item, idx) => (
+                  <li key={idx} className="flex items-center text-zinc-300 bg-zinc-900/50 p-3 rounded-lg border border-zinc-800/50">
+                    <ShieldCheck className="w-5 h-5 text-indigo-400 mr-3 shrink-0" /><span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="lg:w-7/12 w-full flex flex-col space-y-4">
+              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-mono mb-2 w-fit">PRIVATE TRAFFIC & COMMUNITY</div>
+              {[
+                { icon: Users, color: 'blue', num: '1,000,000+', title: '京东校园全国社群操盘', desc: '主导构建百万级年轻流量池，精通复杂社群矩阵的高效裂变、沉淀与海量私域运营转化模型。' },
+                { icon: Zap, color: 'cyan', num: '10,000+', title: 'AI 前沿探索者社群', desc: '聚集并运营过万名 AI 核心极客与商业玩家，打造高粘性、高活跃度的前沿技术与应用探讨生态圈。' },
+                { icon: Activity, color: 'emerald', num: '5,000+', title: '医疗健康从业者智库', desc: '深度链接五千余名核心医疗产业专业人士，沉淀具有极高商业价值与壁垒的医疗行业专属私域智库。' },
+              ].map(({ icon: Icon, color, num, title, desc }, i) => (
+                <div key={i} className={`bg-gradient-to-r from-zinc-900 to-[#0c0c0e] border border-zinc-800 p-6 rounded-2xl flex items-center space-x-6 hover:border-${color}-500/40 transition-colors group`}>
+                  <div className={`w-16 h-16 rounded-full bg-${color}-500/10 flex items-center justify-center shrink-0 border border-${color}-500/20 group-hover:scale-110 transition-transform`}>
+                    <Icon className={`w-8 h-8 text-${color}-400`} />
+                  </div>
+                  <div>
+                    <div className={`text-3xl font-extrabold text-white mb-1 tracking-tight`}>{num}</div>
+                    <div className="text-sm font-bold text-zinc-300 mb-1">{title}</div>
+                    <p className="text-xs text-zinc-500 leading-relaxed">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/5 bg-[#0a0f1a] py-12">
-        <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center">
-          <div className="mb-6 md:mb-0 flex items-center space-x-2">
-            <Globe className="w-5 h-5 text-emerald-500" />
-            <span className="text-lg font-bold text-white tracking-widest">ipaw<span className="text-emerald-500">.ai</span></span>
+      <footer className="pt-20 pb-10 bg-[#09090b] border-t border-zinc-800/50">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 pb-16 border-b border-zinc-800/50">
+            <div>
+              <div className="flex items-center space-x-2 mb-6"><Layers className="w-7 h-7 text-indigo-500" /><span className="text-2xl font-bold tracking-tight text-white">ipaw<span className="text-indigo-500">.ai</span></span></div>
+              <p className="text-zinc-400 leading-relaxed max-w-sm">Architecting AI Gateways. Redefining Digital Ecosystems.<br />寻找数字化转型的破局点？探讨底层大模型算力的接入？期待与您建立安全连接。</p>
+            </div>
+            <div className="flex flex-col md:items-end">
+              <h4 className="text-white font-bold mb-6 tracking-widest text-sm uppercase">Handshake Protocol (联络协议)</h4>
+              <div className="flex flex-col space-y-4 w-full md:w-auto">
+                {[
+                  { label: '微信: yuanzhaoyang001', icon: MessageCircle, color: 'green', href: null },
+                  { label: '电话: 15286902105', icon: Phone, color: 'indigo', href: 'tel:15286902105' },
+                  { label: 'yuanzhaoyang8@gmail.com', icon: Mail, color: 'red', href: 'mailto:yuanzhaoyang8@gmail.com' },
+                  { label: 'X (Twitter): @zhiguanmed', icon: Twitter, color: 'blue', href: 'https://x.com/zhiguanmed?s=21&t=NnPaCXgtDoGYW5hzeRLvkA' },
+                ].map(({ label, icon: Icon, color, href }, i) => {
+                  const inner = (
+                    <>
+                      <span className="font-mono text-sm">{label}</span>
+                      <div className={`p-2 bg-zinc-900 border border-zinc-800 rounded-lg group-hover:border-${color}-500/50 transition-colors`}>
+                        <Icon className={`w-4 h-4 text-${color}-400`} />
+                      </div>
+                    </>
+                  );
+                  return href
+                    ? <a key={i} href={href} target={href.startsWith('http') ? '_blank' : undefined} rel="noreferrer" className="flex items-center justify-start md:justify-end space-x-3 text-zinc-300 hover:text-white group transition-colors">{inner}</a>
+                    : <div key={i} className="flex items-center justify-start md:justify-end space-x-3 text-zinc-300 group">{inner}</div>;
+                })}
+              </div>
+            </div>
           </div>
-          <div className="text-slate-500 text-sm font-mono flex items-center space-x-6">
-            <span>Powered by Rust & AI Agents</span>
-            <a href="#" className="hover:text-emerald-400 transition-colors"><Github className="w-5 h-5" /></a>
-            <a href="#" className="hover:text-emerald-400 transition-colors"><Mail className="w-5 h-5" /></a>
+          <div className="pt-8 flex flex-col sm:flex-row justify-between items-center text-zinc-600 text-xs font-mono">
+            <p>&copy; {new Date().getFullYear()} Yuan Zhaoyang. All rights reserved.</p>
+            <button onClick={() => setIsChatOpen(true)} className="mt-4 sm:mt-0 hover:text-indigo-400 transition-colors flex items-center">
+              <Bot className="w-3 h-3 mr-1" />Init_Agent_Session()
+            </button>
           </div>
         </div>
       </footer>
 
-      <style dangerouslySetInnerHTML={{__html: `.custom-scrollbar::-webkit-scrollbar{width:6px}.custom-scrollbar::-webkit-scrollbar-track{background:transparent}.custom-scrollbar::-webkit-scrollbar-thumb{background-color:rgba(16,185,129,0.2);border-radius:10px}.custom-scrollbar::-webkit-scrollbar-thumb:hover{background-color:rgba(16,185,129,0.4)}`}} />
+      {/* FlyAgent Chat */}
+      {isChatOpen && (
+        <div className="fixed bottom-6 right-6 w-[350px] sm:w-[400px] h-[550px] bg-[#0f0f13] border border-zinc-800 rounded-2xl shadow-2xl flex flex-col z-50 overflow-hidden">
+          <div className="px-5 py-4 bg-[#18181b] border-b border-zinc-800 flex justify-between items-center">
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-emerald-400 p-0.5">
+                <div className="w-full h-full bg-[#18181b] rounded-full flex items-center justify-center"><Bot className="w-4 h-4 text-white" /></div>
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white">FlyAgent</h4>
+                <p className="text-[10px] text-emerald-400 flex items-center"><span className="w-1.5 h-1.5 bg-emerald-400 rounded-full mr-1.5 animate-pulse"></span>Zhaoyang's Digital Twin</p>
+              </div>
+            </div>
+            <button onClick={() => setIsChatOpen(false)} className="text-zinc-500 hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="flex-1 p-5 overflow-y-auto bg-[#0f0f13] space-y-4 custom-scrollbar">
+            {chatHistory.map((msg, idx) => (
+              <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`p-3 rounded-2xl max-w-[85%] text-sm leading-relaxed ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-sm' : 'bg-[#18181b] border border-zinc-800 text-zinc-300 rounded-tl-sm'}`}>
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+            {isLoading && (
+              <div className="flex justify-start">
+                <div className="p-4 bg-[#18181b] border border-zinc-800 rounded-2xl rounded-tl-sm flex items-center space-x-2">
+                  <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /><span className="text-xs text-zinc-500">Processing via MHCopilot...</span>
+                </div>
+              </div>
+            )}
+            <div ref={chatEndRef} className="h-1" />
+          </div>
+          <div className="p-4 bg-[#18181b] border-t border-zinc-800">
+            <form onSubmit={handleSendMessage} className="relative">
+              <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)}
+                placeholder="询问商业合作或架构问题..." disabled={isLoading}
+                className="w-full bg-[#09090b] border border-zinc-800 rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all" />
+              <button type="submit" disabled={isLoading || !inputText.trim()}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white rounded-lg transition-colors">
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <style dangerouslySetInnerHTML={{__html: `.custom-scrollbar::-webkit-scrollbar{width:4px}.custom-scrollbar::-webkit-scrollbar-track{background:transparent}.custom-scrollbar::-webkit-scrollbar-thumb{background-color:#27272a;border-radius:10px}`}} />
     </div>
   );
 }
